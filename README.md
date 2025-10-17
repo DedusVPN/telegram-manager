@@ -52,7 +52,7 @@
 #### Метод 1: Docker (рекомендуется)
 
 ```bash
-git clone <repository>
+git clone https://github.com/Justhateme0/Telegram-Account-Manager-Bot
 cd telegram-account-manager
 cp .env.example .env
 nano .env
@@ -62,7 +62,7 @@ docker-compose up -d
 #### Метод 2: Локально
 
 ```bash
-git clone <repository>
+git clone https://github.com/Justhateme0/Telegram-Account-Manager-Bot
 cd telegram-account-manager
 python -m venv venv
 source venv/bin/activate
