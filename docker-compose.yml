@@ -1,14 +1,33 @@
-version: '3.8'
-
 services:
   bot:
-    build: .
-    container_name: telegram-bot-manager
+    build:
+      context: .
+      target: bot
+    container_name: tam-bot
     restart: unless-stopped
+    profiles: [bot]
     env_file:
       - .env
     volumes:
       - ./data:/app/data
       - ./sessions:/app/sessions
     environment:
-      - DATABASE_URL=sqlite+aiosqlite:///./data/bot.db
+      DATABASE_URL: sqlite+aiosqlite:///./data/bot.db
+
+  web:
+    build:
+      context: .
+      target: web
+    container_name: tam-web
+    restart: unless-stopped
+    profiles: [web]
+    env_file:
+      - .env
+    ports:
+      - "${WEB_PORT:-8080}:8080"
+    volumes:
+      - ./data:/app/data
+      - ./sessions:/app/sessions
+    environment:
+      DATABASE_URL: sqlite+aiosqlite:///./data/bot.db
+      WEB_HOST: 0.0.0.0

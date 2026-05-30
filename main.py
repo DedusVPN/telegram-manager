@@ -1,65 +1,52 @@
 import asyncio
 import logging
 import os
+
 from aiogram import Bot, Dispatcher
 from aiogram.fsm.storage.memory import MemoryStorage
-from dotenv import load_dotenv
-from database import Database
-from account_manager import AccountManager
-from message_sender import MessageSender
-from handlers import router
 
-load_dotenv()
-
-BOT_TOKEN = os.getenv('BOT_TOKEN')
-API_ID = os.getenv('API_ID')
-API_HASH = os.getenv('API_HASH')
-DATABASE_URL = os.getenv('DATABASE_URL', 'sqlite+aiosqlite:///./data/bot.db')
-ENCRYPTION_KEY = os.getenv('ENCRYPTION_KEY')
-
-if not BOT_TOKEN:
-    raise ValueError("BOT_TOKEN не установлен в .env файле")
-if not API_ID:
-    raise ValueError("API_ID не установлен в .env файле")
-if not API_HASH:
-    raise ValueError("API_HASH не установлен в .env файле")
-if not ENCRYPTION_KEY:
-    raise ValueError("ENCRYPTION_KEY не установлен в .env файле")
-
-API_ID = int(API_ID)
+from tam.bot import AdminAccessMiddleware, router
+from tam.config import get_settings, validate_bot_settings
+from tam.db import Database
+from tam.services import AccountManager, MessageSender
 
 logging.basicConfig(
     level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
 )
 
-async def main():
-    os.makedirs('data', exist_ok=True)
-    os.makedirs('sessions', exist_ok=True)
 
-    db = Database(DATABASE_URL)
+async def main() -> None:
+    settings = get_settings()
+    validate_bot_settings(settings)
+
+    os.makedirs("data", exist_ok=True)
+    os.makedirs("sessions", exist_ok=True)
+
+    db = Database(settings.database_url)
     await db.init_db()
 
-    account_manager = AccountManager(API_ID, API_HASH, ENCRYPTION_KEY)
+    account_manager = AccountManager(settings.api_id, settings.api_hash, settings.encryption_key)
     message_sender = MessageSender(account_manager, db)
 
-    bot = Bot(token=BOT_TOKEN)
+    bot = Bot(token=settings.bot_token)
     dp = Dispatcher(storage=MemoryStorage())
-
+    dp.message.middleware(AdminAccessMiddleware(settings))
+    dp.callback_query.middleware(AdminAccessMiddleware(settings))
     dp.include_router(router)
 
     @dp.message.middleware()
     async def inject_dependencies(handler, event, data):
-        data['db'] = db
-        data['account_manager'] = account_manager
-        data['message_sender'] = message_sender
+        data["db"] = db
+        data["account_manager"] = account_manager
+        data["message_sender"] = message_sender
         return await handler(event, data)
 
     @dp.callback_query.middleware()
     async def inject_dependencies_callback(handler, event, data):
-        data['db'] = db
-        data['account_manager'] = account_manager
-        data['message_sender'] = message_sender
+        data["db"] = db
+        data["account_manager"] = account_manager
+        data["message_sender"] = message_sender
         return await handler(event, data)
 
     try:
@@ -69,5 +56,6 @@ async def main():
         await account_manager.close_all()
         await bot.session.close()
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
     asyncio.run(main())

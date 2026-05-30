@@ -1,12 +1,31 @@
-FROM python:3.11-slim
+# syntax=docker/dockerfile:1
 
+FROM node:20-alpine AS frontend-build
+WORKDIR /app/frontend
+COPY frontend/package.json frontend/package-lock.json ./
+RUN npm ci
+COPY frontend/ ./
+RUN npm run build
+
+FROM python:3.12-slim AS base
 WORKDIR /app
+ENV PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONUNBUFFERED=1
 
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY . .
+COPY tam/ tam/
+COPY web/ web/
+COPY main.py run_web.py ./
 
 RUN mkdir -p /app/data /app/sessions
 
+FROM base AS bot
 CMD ["python", "main.py"]
+
+FROM base AS web
+COPY --from=frontend-build /app/frontend/dist /app/frontend/dist
+ENV WEB_HOST=0.0.0.0
+EXPOSE 8080
+CMD ["python", "run_web.py"]
