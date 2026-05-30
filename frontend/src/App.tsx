@@ -7,6 +7,8 @@ import { ChatsPage } from "./pages/ChatsPage";
 import { DashboardPage } from "./pages/DashboardPage";
 import { HistoryPage } from "./pages/HistoryPage";
 import { LoginPage } from "./pages/LoginPage";
+import { ProxiesPage } from "./pages/ProxiesPage";
+import { RegistrationPage } from "./pages/RegistrationPage";
 
 function ProtectedRoute({ children }: { children: JSX.Element }) {
   if (!getToken()) {
@@ -28,6 +30,8 @@ export function App() {
       >
         <Route path="/" element={<DashboardPage />} />
         <Route path="/accounts" element={<AccountsPage />} />
+        <Route path="/proxies" element={<ProxiesPage />} />
+        <Route path="/registration" element={<RegistrationPage />} />
         <Route path="/chats" element={<ChatsPage />} />
         <Route path="/broadcast" element={<BroadcastPage />} />
         <Route path="/history" element={<HistoryPage />} />

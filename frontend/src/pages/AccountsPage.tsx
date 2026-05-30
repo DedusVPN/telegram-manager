@@ -8,7 +8,7 @@ import {
   Trash2,
   UserPlus,
 } from "lucide-react";
-import { Account, api } from "../api/client";
+import { Account, ProxyItem, api } from "../api/client";
 import { Icon } from "../components/Icon";
 
 type AuthStep = "phone" | "code" | "password";
@@ -24,6 +24,8 @@ export function AccountsPage() {
   const [code, setCode] = useState("");
   const [password, setPassword] = useState("");
   const [sessionId, setSessionId] = useState("");
+  const [proxyId, setProxyId] = useState("");
+  const [proxies, setProxies] = useState<ProxyItem[]>([]);
   const [submitting, setSubmitting] = useState(false);
 
   async function loadAccounts(query = searchQuery) {
@@ -45,6 +47,12 @@ export function AccountsPage() {
     return () => clearTimeout(timer);
   }, [searchQuery]);
 
+  useEffect(() => {
+    if (modalOpen) {
+      api.getProxies().then(setProxies).catch(() => {});
+    }
+  }, [modalOpen]);
+
   function resetModal() {
     setModalOpen(false);
     setStep("phone");
@@ -52,6 +60,7 @@ export function AccountsPage() {
     setCode("");
     setPassword("");
     setSessionId("");
+    setProxyId("");
     setError("");
   }
 
@@ -60,7 +69,10 @@ export function AccountsPage() {
     setSubmitting(true);
     setError("");
     try {
-      const response = await api.startAccountAuth(phone);
+      const response = await api.startAccountAuth(
+        phone,
+        proxyId ? Number(proxyId) : undefined,
+      );
       setSessionId(response.session_id);
       setStep("code");
     } catch (err) {
@@ -218,6 +230,19 @@ export function AccountsPage() {
                         required
                       />
                     </div>
+                  </div>
+                  <div className="field">
+                    <label>Прокси</label>
+                    <select value={proxyId} onChange={(e) => setProxyId(e.target.value)}>
+                      <option value="">Автовыбор</option>
+                      {proxies
+                        .filter((p) => p.is_active)
+                        .map((p) => (
+                          <option key={p.id} value={p.id}>
+                            {p.protocol}://{p.host}:{p.port}
+                          </option>
+                        ))}
+                    </select>
                   </div>
                   <div className="actions-row">
                     <button className="btn btn-with-icon" type="submit" disabled={submitting}>

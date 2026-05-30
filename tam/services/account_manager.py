@@ -15,6 +15,7 @@ from telethon.errors import (
 from telethon.sessions import StringSession
 from telethon.tl.types import Channel, Chat, User
 
+from tam.services.proxy_utils import proxy_to_telethon
 from tam.telegram.serialize import message_to_dict, pick_active_reply_keyboard
 
 
@@ -31,8 +32,23 @@ class AccountManager:
     def decrypt_session(self, encrypted_session: str) -> str:
         return self.cipher.decrypt(encrypted_session.encode()).decode()
 
-    async def add_account(self, phone: str):
-        client = TelegramClient(StringSession(), self.api_id, self.api_hash)
+    def create_client(
+        self,
+        session_string: str | None = None,
+        *,
+        proxy: dict | None = None,
+    ) -> TelegramClient:
+        session = StringSession(session_string) if session_string else StringSession()
+        kwargs: dict = {
+            "connection_retries": 2,
+            "retry_delay": 2,
+        }
+        if proxy:
+            kwargs["proxy"] = proxy_to_telethon(proxy)
+        return TelegramClient(session, self.api_id, self.api_hash, **kwargs)
+
+    async def add_account(self, phone: str, *, proxy: dict | None = None):
+        client = self.create_client(proxy=proxy)
         await client.connect()
 
         if not await client.is_user_authorized():
@@ -73,15 +89,29 @@ class AccountManager:
             "session_string": encrypted_session,
         }, "success"
 
-    async def load_account(self, encrypted_session: str):
+    async def load_account(
+        self,
+        encrypted_session: str,
+        *,
+        proxy: dict | None = None,
+    ):
         session_string = self.decrypt_session(encrypted_session)
-        client = TelegramClient(StringSession(session_string), self.api_id, self.api_hash)
+        client = self.create_client(session_string, proxy=proxy)
         await client.connect()
         return client
 
-    async def get_client(self, account_id: int, encrypted_session: str):
+    async def get_client(
+        self,
+        account_id: int,
+        encrypted_session: str,
+        *,
+        proxy: dict | None = None,
+    ):
         if account_id not in self.clients:
-            self.clients[account_id] = await self.load_account(encrypted_session)
+            self.clients[account_id] = await self.load_account(
+                encrypted_session,
+                proxy=proxy,
+            )
         return self.clients[account_id]
 
     async def remove_account(self, account_id: int):
@@ -163,8 +193,10 @@ class AccountManager:
         account_id: int,
         encrypted_session: str,
         username: str,
+        *,
+        proxy: dict | None = None,
     ) -> dict:
-        client = await self.get_client(account_id, encrypted_session)
+        client = await self.get_client(account_id, encrypted_session, proxy=proxy)
         normalized = self.normalize_username(username)
         if not normalized:
             raise ValueError("Username не указан")
@@ -182,8 +214,10 @@ class AccountManager:
         encrypted_session: str,
         limit: int = 50,
         search: str | None = None,
+        *,
+        proxy: dict | None = None,
     ) -> list[dict]:
-        client = await self.get_client(account_id, encrypted_session)
+        client = await self.get_client(account_id, encrypted_session, proxy=proxy)
         dialogs = await client.get_dialogs(limit=limit)
         result = []
 
@@ -229,8 +263,10 @@ class AccountManager:
         account_id: int,
         encrypted_session: str,
         chat_id: str,
+        *,
+        proxy: dict | None = None,
     ) -> bytes | None:
-        client = await self.get_client(account_id, encrypted_session)
+        client = await self.get_client(account_id, encrypted_session, proxy=proxy)
         entity = await self._resolve_chat(client, chat_id)
         if not self._entity_has_photo(entity):
             return None
@@ -250,8 +286,10 @@ class AccountManager:
         chat_id: str,
         limit: int = 50,
         offset_id: int = 0,
+        *,
+        proxy: dict | None = None,
     ) -> list[dict]:
-        client = await self.get_client(account_id, encrypted_session)
+        client = await self.get_client(account_id, encrypted_session, proxy=proxy)
         entity = await self._resolve_chat(client, chat_id)
         kwargs = {"limit": limit}
         if offset_id:
@@ -265,8 +303,10 @@ class AccountManager:
         account_id: int,
         encrypted_session: str,
         chat_id: str,
+        *,
+        proxy: dict | None = None,
     ) -> dict:
-        client = await self.get_client(account_id, encrypted_session)
+        client = await self.get_client(account_id, encrypted_session, proxy=proxy)
         entity = await self._resolve_chat(client, chat_id)
         await client.send_read_acknowledge(entity)
         return {"status": "success"}
@@ -276,10 +316,12 @@ class AccountManager:
         account_id: int,
         encrypted_session: str,
         chat_id: str,
+        *,
+        proxy: dict | None = None,
     ) -> list[dict]:
         from telethon.tl.functions.users import GetFullUserRequest
 
-        client = await self.get_client(account_id, encrypted_session)
+        client = await self.get_client(account_id, encrypted_session, proxy=proxy)
         entity = await self._resolve_chat(client, chat_id)
         if not getattr(entity, "bot", False):
             return []
@@ -304,8 +346,10 @@ class AccountManager:
         encrypted_session: str,
         chat_id: str,
         limit: int = 100,
+        *,
+        proxy: dict | None = None,
     ) -> dict | None:
-        client = await self.get_client(account_id, encrypted_session)
+        client = await self.get_client(account_id, encrypted_session, proxy=proxy)
         entity = await self._resolve_chat(client, chat_id)
         messages = await client.get_messages(entity, limit=limit)
         serialized = [message_to_dict(message) for message in messages if message is not None]
@@ -321,8 +365,9 @@ class AccountManager:
         row: int | None = None,
         col: int | None = None,
         text: str | None = None,
+        proxy: dict | None = None,
     ) -> dict:
-        client = await self.get_client(account_id, encrypted_session)
+        client = await self.get_client(account_id, encrypted_session, proxy=proxy)
         entity = await self._resolve_chat(client, chat_id)
         message = await client.get_messages(entity, ids=message_id)
         if not message:
@@ -346,9 +391,10 @@ class AccountManager:
         text: str,
         *,
         parse_mode: str | None = None,
+        proxy: dict | None = None,
     ) -> dict:
         try:
-            client = await self.get_client(account_id, encrypted_session)
+            client = await self.get_client(account_id, encrypted_session, proxy=proxy)
             entity = await self._resolve_chat(client, chat_id)
             message = await client.send_message(entity, text, parse_mode=parse_mode)
             return {

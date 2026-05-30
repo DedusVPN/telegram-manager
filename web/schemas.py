@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 class ORMModel(BaseModel):
@@ -22,12 +22,14 @@ class AccountResponse(ORMModel):
     username: str | None = None
     first_name: str | None = None
     last_name: str | None = None
+    proxy_id: int | None = None
     is_active: bool
     created_at: datetime
 
 
 class AccountAuthStartRequest(BaseModel):
     phone: str = Field(min_length=5, max_length=20)
+    proxy_id: int | None = None
 
 
 class AccountAuthStartResponse(BaseModel):
@@ -160,3 +162,96 @@ class TaskResponse(ORMModel):
     account_delay: int
     status: str
     created_at: datetime
+
+
+class ProxyResponse(ORMModel):
+    id: int
+    protocol: str
+    host: str
+    port: int
+    username: str | None = None
+    label: str | None = None
+    is_active: bool
+    is_healthy: bool
+    fail_count: int
+    usage_count: int
+    last_used_at: datetime | None = None
+    last_checked_at: datetime | None = None
+    created_at: datetime
+
+
+class ProxyCreateRequest(BaseModel):
+    protocol: str = Field(default="socks5", pattern="^(socks5|socks4|http)$")
+    host: str | None = Field(default=None, min_length=1, max_length=255)
+    port: int | None = Field(default=None, ge=1, le=65535)
+    username: str | None = None
+    password: str | None = None
+    label: str | None = Field(default=None, max_length=100)
+    raw_line: str | None = Field(default=None, max_length=500)
+
+    @model_validator(mode="after")
+    def validate_proxy_fields(self):
+        if self.raw_line:
+            return self
+        if not self.host or not self.port:
+            raise ValueError("Укажите host и port или строку raw_line")
+        return self
+
+
+class ProxyUpdateRequest(BaseModel):
+    label: str | None = Field(default=None, max_length=100)
+    is_active: bool | None = None
+    is_healthy: bool | None = None
+
+
+class ProxyBulkImportRequest(BaseModel):
+    text: str = Field(min_length=1, max_length=100_000)
+
+
+class ProxyTestResponse(BaseModel):
+    ok: bool
+    error: str | None = None
+
+
+class RegistrationJobCreateRequest(BaseModel):
+    phones: list[str] = Field(min_length=1, max_length=500)
+    proxy_id: int | None = None
+    delay_seconds: int = Field(default=3, ge=1, le=120)
+    default_2fa_password: str | None = Field(default=None, max_length=256)
+
+
+class RegistrationItemResponse(ORMModel):
+    id: int
+    job_id: int
+    phone: str
+    status: str
+    proxy_id: int | None = None
+    error: str | None = None
+    created_at: datetime
+    completed_at: datetime | None = None
+
+
+class RegistrationJobResponse(ORMModel):
+    id: int
+    status: str
+    proxy_id: int | None = None
+    delay_seconds: int
+    total_count: int
+    created_at: datetime
+    completed_at: datetime | None = None
+
+
+class RegistrationJobDetailResponse(RegistrationJobResponse):
+    success_count: int = 0
+    failed_count: int = 0
+    awaiting_code_count: int = 0
+    items: list[RegistrationItemResponse] = []
+
+
+class RegistrationCodeRequest(BaseModel):
+    code: str = Field(min_length=1, max_length=10)
+    password: str | None = Field(default=None, max_length=256)
+
+
+class RegistrationPasswordRequest(BaseModel):
+    password: str = Field(min_length=1, max_length=256)

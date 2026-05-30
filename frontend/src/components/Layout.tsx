@@ -1,10 +1,12 @@
 import { NavLink, Outlet } from "react-router-dom";
 import {
+  Globe,
   History,
   LayoutDashboard,
   LogOut,
   Megaphone,
   MessageCircle,
+  UserPlus,
   Users,
 } from "lucide-react";
 import { clearToken } from "../api/client";
@@ -13,6 +15,8 @@ import { Icon } from "./Icon";
 const links = [
   { to: "/", label: "Дашборд", icon: LayoutDashboard },
   { to: "/accounts", label: "Аккаунты", icon: Users },
+  { to: "/registration", label: "Регистрация", icon: UserPlus },
+  { to: "/proxies", label: "Прокси", icon: Globe },
   { to: "/chats", label: "Чаты", icon: MessageCircle },
   { to: "/broadcast", label: "Рассылка", icon: Megaphone },
   { to: "/history", label: "История", icon: History },

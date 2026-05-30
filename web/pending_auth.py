@@ -10,6 +10,8 @@ class PendingLogin:
     client: TelegramClient
     phone: str
     code: str | None = None
+    proxy_id: int | None = None
+    registration_item_id: int | None = None
     created_at: datetime | None = None
 
     def __post_init__(self):
@@ -32,10 +34,22 @@ class PendingAuthStore:
         for session_id in expired:
             self.discard(session_id)
 
-    def create(self, client: TelegramClient, phone: str) -> str:
+    def create(
+        self,
+        client: TelegramClient,
+        phone: str,
+        *,
+        proxy_id: int | None = None,
+        registration_item_id: int | None = None,
+    ) -> str:
         self._cleanup()
         session_id = str(uuid4())
-        self._store[session_id] = PendingLogin(client=client, phone=phone)
+        self._store[session_id] = PendingLogin(
+            client=client,
+            phone=phone,
+            proxy_id=proxy_id,
+            registration_item_id=registration_item_id,
+        )
         return session_id
 
     def get(self, session_id: str) -> PendingLogin | None:

@@ -3,8 +3,10 @@ from sqlalchemy import select
 
 from tam.config import Settings, get_settings, verify_web_password
 from tam.db.models import Account
+from tam.services.account_proxy import resolve_proxy_for_account
+from tam.services.proxy_manager import ProxyManager
 from web.auth import create_access_token, get_current_user
-from web.dependencies import get_account_manager, get_db, get_pending_auth
+from web.dependencies import get_account_manager, get_db, get_pending_auth, get_proxy_manager
 from web.schemas import (
     AccountAuth2FARequest,
     AccountAuthResponse,
@@ -74,18 +76,29 @@ async def list_accounts(
 @auth_accounts_router.post("/auth/start", response_model=AccountAuthStartResponse)
 async def start_account_auth(
     payload: AccountAuthStartRequest,
+    db=Depends(get_db),
     account_manager=Depends(get_account_manager),
     pending_auth=Depends(get_pending_auth),
+    proxy_manager: ProxyManager = Depends(get_proxy_manager),
 ):
     phone = payload.phone.strip()
     if not phone.startswith("+"):
         phone = f"+{phone}"
 
-    client, auth_status = await account_manager.add_account(phone)
+    proxy_dict = None
+    proxy_id = payload.proxy_id
+    async with db.session_maker() as session:
+        proxy = await proxy_manager.pick_proxy(session, proxy_id=proxy_id)
+        if proxy:
+            proxy_dict = proxy_manager.proxy_row_to_dict(proxy)
+            proxy_id = proxy.id
+            await proxy_manager.mark_proxy_used(session, proxy)
+
+    client, auth_status = await account_manager.add_account(phone, proxy=proxy_dict)
     if auth_status == "authorized":
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Аккаунт уже авторизован")
 
-    session_id = pending_auth.create(client, phone)
+    session_id = pending_auth.create(client, phone, proxy_id=proxy_id)
     return AccountAuthStartResponse(session_id=session_id, status="code_sent")
 
 
@@ -125,7 +138,7 @@ async def verify_account_auth(
             await pending_auth.discard(payload.session_id)
             raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Аккаунт уже добавлен")
 
-        account = Account(**result)
+        account = Account(**result, proxy_id=pending.proxy_id)
         session.add(account)
         await session.commit()
         await session.refresh(account)
@@ -165,7 +178,7 @@ async def verify_account_2fa(
             await pending_auth.discard(payload.session_id)
             raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Аккаунт уже добавлен")
 
-        account = Account(**result)
+        account = Account(**result, proxy_id=pending.proxy_id)
         session.add(account)
         await session.commit()
         await session.refresh(account)

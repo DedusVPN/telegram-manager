@@ -3,6 +3,7 @@ from fastapi.responses import Response
 from sqlalchemy import select
 
 from tam.db.models import Account
+from tam.services.account_proxy import resolve_proxy_for_account
 from web.auth import get_current_user
 from web.dependencies import get_account_manager, get_db
 from web.schemas import (
@@ -19,7 +20,7 @@ from web.security import safe_telegram_error
 router = APIRouter(prefix="/api/accounts", tags=["chats"], dependencies=[Depends(get_current_user)])
 
 
-async def _get_active_account(account_id: int, db) -> Account:
+async def _get_active_account(account_id: int, db) -> tuple[Account, dict | None]:
     async with db.session_maker() as session:
         result = await session.execute(
             select(Account).where(Account.id == account_id, Account.is_active == True)
@@ -27,7 +28,8 @@ async def _get_active_account(account_id: int, db) -> Account:
         account = result.scalar_one_or_none()
         if not account:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Аккаунт не найден")
-        return account
+        proxy = await resolve_proxy_for_account(session, account)
+        return account, proxy
 
 
 @router.get("/{account_id}/dialogs", response_model=list[DialogResponse])
@@ -38,12 +40,13 @@ async def get_dialogs(
     db=Depends(get_db),
     account_manager=Depends(get_account_manager),
 ):
-    account = await _get_active_account(account_id, db)
+    account, proxy = await _get_active_account(account_id, db)
     dialogs = await account_manager.get_dialogs(
         account.id,
         account.session_string,
         limit=limit,
         search=search,
+        proxy=proxy,
     )
     return [DialogResponse.model_validate(dialog) for dialog in dialogs]
 
@@ -55,12 +58,13 @@ async def lookup_username(
     db=Depends(get_db),
     account_manager=Depends(get_account_manager),
 ):
-    account = await _get_active_account(account_id, db)
+    account, proxy = await _get_active_account(account_id, db)
     try:
         result = await account_manager.search_by_username(
             account.id,
             account.session_string,
             username,
+            proxy=proxy,
         )
     except (LookupError, ValueError) as exc:
         raise safe_telegram_error(exc, not_found=isinstance(exc, LookupError)) from exc
@@ -76,12 +80,13 @@ async def mark_chat_read(
     db=Depends(get_db),
     account_manager=Depends(get_account_manager),
 ):
-    account = await _get_active_account(account_id, db)
+    account, proxy = await _get_active_account(account_id, db)
     try:
         return await account_manager.mark_chat_read(
             account.id,
             account.session_string,
             chat_id,
+            proxy=proxy,
         )
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
@@ -96,12 +101,13 @@ async def get_chat_avatar(
     db=Depends(get_db),
     account_manager=Depends(get_account_manager),
 ):
-    account = await _get_active_account(account_id, db)
+    account, proxy = await _get_active_account(account_id, db)
     try:
         avatar = await account_manager.get_chat_avatar(
             account.id,
             account.session_string,
             chat_id,
+            proxy=proxy,
         )
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(exc)) from exc
@@ -125,11 +131,12 @@ async def get_active_keyboard(
     db=Depends(get_db),
     account_manager=Depends(get_account_manager),
 ):
-    account = await _get_active_account(account_id, db)
+    account, proxy = await _get_active_account(account_id, db)
     keyboard = await account_manager.get_active_reply_keyboard(
         account.id,
         account.session_string,
         chat_id,
+        proxy=proxy,
     )
     if not keyboard:
         return None
@@ -143,11 +150,12 @@ async def get_bot_commands(
     db=Depends(get_db),
     account_manager=Depends(get_account_manager),
 ):
-    account = await _get_active_account(account_id, db)
+    account, proxy = await _get_active_account(account_id, db)
     commands = await account_manager.get_bot_commands(
         account.id,
         account.session_string,
         chat_id,
+        proxy=proxy,
     )
     return [BotCommandResponse.model_validate(command) for command in commands]
 
@@ -161,13 +169,14 @@ async def get_chat_messages(
     db=Depends(get_db),
     account_manager=Depends(get_account_manager),
 ):
-    account = await _get_active_account(account_id, db)
+    account, proxy = await _get_active_account(account_id, db)
     messages = await account_manager.get_messages(
         account.id,
         account.session_string,
         chat_id,
         limit=limit,
         offset_id=offset_id,
+        proxy=proxy,
     )
     return [ChatMessageResponse.model_validate(message) for message in messages]
 
@@ -180,13 +189,14 @@ async def send_chat_message(
     db=Depends(get_db),
     account_manager=Depends(get_account_manager),
 ):
-    account = await _get_active_account(account_id, db)
+    account, proxy = await _get_active_account(account_id, db)
     result = await account_manager.send_chat_message(
         account.id,
         account.session_string,
         chat_id,
         payload.text,
         parse_mode=payload.parse_mode,
+        proxy=proxy,
     )
     return SendMessageResponse.model_validate(result)
 
@@ -200,7 +210,7 @@ async def click_message_button(
     db=Depends(get_db),
     account_manager=Depends(get_account_manager),
 ):
-    account = await _get_active_account(account_id, db)
+    account, proxy = await _get_active_account(account_id, db)
     try:
         return await account_manager.click_message_button(
             account.id,
@@ -210,6 +220,7 @@ async def click_message_button(
             row=payload.row,
             col=payload.col,
             text=payload.text,
+            proxy=proxy,
         )
     except ValueError as exc:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(exc)) from exc

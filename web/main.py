@@ -11,6 +11,8 @@ from web.dependencies import get_db, init_services, shutdown_services
 from web.routes.accounts import auth_accounts_router, router as auth_router
 from web.routes.chats import router as chats_router
 from web.routes.platform import router as platform_router
+from web.routes.proxies import router as proxies_router
+from web.routes.registration import router as registration_router
 
 FRONTEND_DIST = Path(__file__).resolve().parent.parent / "frontend" / "dist"
 
@@ -42,6 +44,8 @@ def create_app() -> FastAPI:
 
     app.include_router(auth_router)
     app.include_router(auth_accounts_router)
+    app.include_router(proxies_router)
+    app.include_router(registration_router)
     app.include_router(chats_router)
     app.include_router(platform_router)
 

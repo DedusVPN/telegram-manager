@@ -97,8 +97,50 @@ export interface Account {
   username: string | null;
   first_name: string | null;
   last_name: string | null;
+  proxy_id: number | null;
   is_active: boolean;
   created_at: string;
+}
+
+export interface ProxyItem {
+  id: number;
+  protocol: string;
+  host: string;
+  port: number;
+  username: string | null;
+  label: string | null;
+  is_active: boolean;
+  is_healthy: boolean;
+  fail_count: number;
+  usage_count: number;
+  last_used_at: string | null;
+  last_checked_at: string | null;
+  created_at: string;
+}
+
+export interface RegistrationItem {
+  id: number;
+  job_id: number;
+  phone: string;
+  status: string;
+  proxy_id: number | null;
+  error: string | null;
+  created_at: string;
+  completed_at: string | null;
+}
+
+export interface RegistrationJobDetail {
+  id: number;
+  status: string;
+  proxy_id: number | null;
+  delay_seconds: number;
+  total_count: number;
+  success_count: number;
+  failed_count: number;
+  awaiting_code_count: number;
+  created_at: string;
+  completed_at: string | null;
+  items: RegistrationItem[];
 }
 
 export interface Dialog {
@@ -200,10 +242,89 @@ export const api = {
     return request<{ status: string }>(`/api/accounts/${id}`, { method: "DELETE" });
   },
 
-  startAccountAuth(phone: string) {
+  startAccountAuth(phone: string, proxyId?: number) {
     return request<{ session_id: string; status: string }>("/api/accounts/auth/start", {
       method: "POST",
-      body: JSON.stringify({ phone }),
+      body: JSON.stringify({ phone, proxy_id: proxyId }),
+    });
+  },
+
+  getProxies() {
+    return request<ProxyItem[]>("/api/proxies");
+  },
+
+  createProxy(payload: {
+    raw_line?: string;
+    protocol?: string;
+    host?: string;
+    port?: number;
+    username?: string;
+    password?: string;
+    label?: string;
+  }) {
+    return request<ProxyItem>("/api/proxies", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+  },
+
+  importProxies(text: string) {
+    return request<ProxyItem[]>("/api/proxies/import", {
+      method: "POST",
+      body: JSON.stringify({ text }),
+    });
+  },
+
+  updateProxy(id: number, payload: { label?: string; is_active?: boolean; is_healthy?: boolean }) {
+    return request<ProxyItem>(`/api/proxies/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(payload),
+    });
+  },
+
+  deleteProxy(id: number) {
+    return request<{ status: string }>(`/api/proxies/${id}`, { method: "DELETE" });
+  },
+
+  testProxy(id: number) {
+    return request<{ ok: boolean; error: string | null }>(`/api/proxies/${id}/test`, {
+      method: "POST",
+    });
+  },
+
+  createRegistrationJob(payload: {
+    phones: string[];
+    proxy_id?: number;
+    delay_seconds?: number;
+    default_2fa_password?: string;
+  }) {
+    return request<RegistrationJobDetail>("/api/registration/jobs", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+  },
+
+  getRegistrationJob(id: number) {
+    return request<RegistrationJobDetail>(`/api/registration/jobs/${id}`);
+  },
+
+  cancelRegistrationJob(id: number) {
+    return request<RegistrationJobDetail>(`/api/registration/jobs/${id}/cancel`, {
+      method: "POST",
+    });
+  },
+
+  submitRegistrationCode(itemId: number, code: string, password?: string) {
+    return request<RegistrationItem>(`/api/registration/items/${itemId}/code`, {
+      method: "POST",
+      body: JSON.stringify({ code, password }),
+    });
+  },
+
+  submitRegistration2FA(itemId: number, password: string) {
+    return request<RegistrationItem>(`/api/registration/items/${itemId}/2fa`, {
+      method: "POST",
+      body: JSON.stringify({ password }),
     });
   },
 
